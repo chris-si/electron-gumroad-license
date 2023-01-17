@@ -1,6 +1,6 @@
 import Store from "electron-store";
-import got from "got";
 import { machineIdSync } from "node-machine-id";
+import axios from "axios";
 
 import {
   GumroadSuccessResponse,
@@ -47,7 +47,7 @@ export interface GumroadError {
 type CheckResult =
   | { status: CheckStatus.ValidLicense; response: GumroadSuccessResponse }
   | { status: CheckStatus.InvalidLicense; error: GumroadError }
-  | { status: CheckStatus.UnableToCheck };
+  | { status: CheckStatus.UnableToCheck; error: any };
 
 /**
  * Creates a new license manager for your product.
@@ -79,19 +79,20 @@ export const createLicenseManager = (
   ): Promise<CheckResult> => {
     let result: GumroadResponse;
     try {
-      result = await got
-        .post(options?.gumroadApiUrl ?? API_URL, {
-          throwHttpErrors: false,
-          timeout: options?.timeout ?? 15000,
-          form: {
-            product_permalink: productId,
-            license_key: licenseKey.trim(),
-            increment_uses_count: increaseUseCount,
-          },
-        })
-        .json();
+      result = await axios.post(options?.gumroadApiUrl ?? API_URL, {
+        throwHttpErrors: false,
+        timeout: { send: options?.timeout ?? 15000 },
+        form: {
+          product_id: productId,
+          license_key: licenseKey.trim(),
+          increment_uses_count: increaseUseCount,
+        },
+      });
     } catch (e) {
-      return { status: CheckStatus.UnableToCheck };
+      return {
+        status: CheckStatus.UnableToCheck,
+        error: e,
+      };
     }
 
     if (!result.success) {
@@ -160,10 +161,7 @@ export const createLicenseManager = (
     if (result.status === CheckStatus.UnableToCheck) {
       return {
         success: false,
-        error: {
-          type: ErrorType.ServerUnavailable,
-          message: "Could not reach the Gumroad license servers.",
-        },
+        error: result.error,
       };
     }
 

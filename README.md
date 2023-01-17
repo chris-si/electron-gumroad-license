@@ -1,6 +1,6 @@
 # Electron Gumroad License
 
-[![NPM Package](https://img.shields.io/npm/v/electron-gumroad-license)](https://npmjs.com/package/electron-gumroad-license)
+[![NPM Package](https://img.shields.io/npm/v/electron-gumroad-license-2)](https://npmjs.com/package/electron-gumroad-license-2)
 
 This library allows you to verify and store a user's license for your Electron
 app with [Gumroad's API](https://help.gumroad.com/article/76-license-keys).
@@ -16,7 +16,7 @@ product. You can then use it to check the current license, validate a new one,
 and more:
 
 ```ts
-import { createLicenseManager } from "electron-gumroad-license";
+import { createLicenseManager } from "electron-gumroad-license-2";
 
 const licenseManager = createLicenseManager("product-id");
 
