@@ -1,6 +1,6 @@
 {
   "name": "electron-gumroad-license-2",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Check, store, and manage your users' Gumroad license",
   "main": "index.js",
   "author": "Leo Bernard <leo@leolabs.org>",
@@ -16,7 +16,11 @@
   "dependencies": {
     "axios": "^1.2.2",
     "electron-store": "^5.1.1",
+    "form-data": "^4.0.0",
     "node-machine-id": "^1.1.12",
     "typescript": "^4.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.18"
   }
 }

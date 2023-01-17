@@ -1,6 +1,8 @@
 import Store from "electron-store";
 import { machineIdSync } from "node-machine-id";
 import axios from "axios";
+import https from "https";
+import FormData from "form-data";
 
 import {
   GumroadSuccessResponse,
@@ -21,6 +23,8 @@ export interface GumroadLicenseOptions {
   disableEncryption?: boolean;
   /** Specifies a timeout in ms for reaching the license servers. Default: 15.000 ms */
   timeout?: number;
+  /** Old Electron cert check */
+  rejectUnauthorized?: boolean;
 }
 
 export enum CheckStatus {
@@ -78,16 +82,21 @@ export const createLicenseManager = (
     increaseUseCount = false,
   ): Promise<CheckResult> => {
     let result: GumroadResponse;
+    if (options?.rejectUnauthorized == false) {
+      https.globalAgent.options.rejectUnauthorized = false;
+    }
+
     try {
-      result = await axios.post(options?.gumroadApiUrl ?? API_URL, {
-        throwHttpErrors: false,
-        timeout: { send: options?.timeout ?? 15000 },
-        form: {
-          product_id: productId,
-          license_key: licenseKey.trim(),
-          increment_uses_count: increaseUseCount,
-        },
+      const form = new FormData();
+      form.append("product_id", productId);
+      form.append("license_key", licenseKey);
+      form.append("increment_uses_count", String(increaseUseCount));
+
+      const resp = await axios.post(options?.gumroadApiUrl ?? API_URL, form, {
+        headers: form.getHeaders(),
+        timeout: options?.timeout ?? 15000,
       });
+      result = resp.data;
     } catch (e) {
       return {
         status: CheckStatus.UnableToCheck,
