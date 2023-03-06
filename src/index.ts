@@ -1,7 +1,16 @@
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "crypto";
 import Store, { Schema } from "electron-store";
+import { existsSync, readFileSync } from "fs";
 import https from "https";
 import fetch from "node-fetch";
 import { machineIdSync } from "node-machine-id";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   GumroadResponse,
@@ -24,6 +33,8 @@ export interface GumroadLicenseOptions {
   timeout?: number;
   /** Old Electron cert check */
   rejectUnauthorized?: boolean;
+  /** License file path */
+  licenseFilePath: string;
 }
 
 export enum CheckStatus {
@@ -51,6 +62,7 @@ export interface ILicenseStore {
   license: {
     fileName: string;
     fileExtension: string;
+    filePath: string;
     encryptionKey: string | undefined;
     clearInvalidConfig: boolean;
     key: string;
@@ -68,6 +80,9 @@ const licenseStoreSchema: Schema<ILicenseStore> = {
         type: "string",
       },
       fileExtension: {
+        type: "string",
+      },
+      filePath: {
         type: "string",
       },
       encryptionKey: {
@@ -108,15 +123,15 @@ type CheckResult =
  */
 export const createLicenseManager = (
   productId: string,
-  options?: GumroadLicenseOptions,
+  options: GumroadLicenseOptions,
 ) => {
-  const encryptionKey = productId + machineIdSync();
   const licenseStore = new Store<ILicenseStore>({
     defaults: {
       license: {
         fileName: "license",
         fileExtension: "key",
-        encryptionKey: !options?.disableEncryption ? encryptionKey : undefined,
+        filePath: "",
+        encryptionKey: undefined,
         clearInvalidConfig: true,
         key: undefined!,
         lastCheckAttempt: undefined!,
@@ -149,9 +164,12 @@ export const createLicenseManager = (
         method: "POST",
         body: JSON.stringify({
           product_id: productId,
-          license_key: licenseKey.trim(),
-          increment_uses_count: increaseUseCount,
+          license_key: licenseKey,
+          increment_uses_count: new Boolean(increaseUseCount).toString(),
         }),
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
       result = (await response.json()) as GumroadResponse;
     } catch (e) {
@@ -235,9 +253,31 @@ export const createLicenseManager = (
       return { success: false, error: result.error };
     }
 
-    licenseStore.set("license.key", licenseKey);
     licenseStore.set("license.lastCheckAttempt", Date.now());
     licenseStore.set("license.lastCheckSuccess", Date.now());
+    licenseStore.set("license.key", licenseKey);
+
+    const licenseFile = join(
+      options?.licenseFilePath,
+      ((licenseStore.get("license.fileName") as string) +
+        "." +
+        licenseStore.get("license.fileExtension")) as string,
+    );
+    const secret = createHash("sha256")
+      .update(String(productId + machineIdSync()))
+      .digest("base64")
+      .substr(0, 32);
+    const iv = randomBytes(16);
+    const cipher = createCipheriv("aes-256-cbc", secret, iv);
+    const encryptedLicense = Buffer.concat([
+      cipher.update(licenseKey, "utf8"),
+      cipher.final(),
+    ]);
+    writeFileSync(licenseFile, encryptedLicense);
+
+    licenseStore.set("license.key", iv.toString("hex"));
+    licenseStore.set("license.filePath", licenseFile);
+
     return { success: true, response: result.response };
   };
 
@@ -254,14 +294,27 @@ export const createLicenseManager = (
           | CheckStatus.NotSet;
       }
   > => {
-    const key = licenseStore.get("license.key") as string;
+    const ivString = licenseStore.get("license.key") as string;
+    const filePath = licenseStore.get("license.filePath") as string;
 
-    if (!key) {
+    if (!filePath || !existsSync(filePath) || !ivString) {
       return { status: CheckStatus.NotSet };
     }
 
+    const secret = createHash("sha256")
+      .update(String(productId + machineIdSync()))
+      .digest("base64")
+      .substr(0, 32);
+    const iv = Buffer.from(ivString, "hex");
+    const decipher = createDecipheriv("aes-256-cbc", secret, iv);
+    const encryptedLicense = readFileSync(filePath);
+    const licenseKey = Buffer.concat([
+      decipher.update(encryptedLicense),
+      decipher.final(),
+    ]).toString();
+
     licenseStore.set("license.lastCheckAttempt", Date.now());
-    const result = await validateLicenseCode(key);
+    const result = await validateLicenseCode(licenseKey);
 
     switch (result.status) {
       case CheckStatus.ValidLicense:
