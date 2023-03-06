@@ -1,12 +1,12 @@
-import Store from "electron-store";
-import { machineIdSync } from "node-machine-id";
 import axios from "axios";
-import https from "https";
+import Store, { Schema } from "electron-store";
 import FormData from "form-data";
+import https from "https";
+import { machineIdSync } from "node-machine-id";
 
 import {
-  GumroadSuccessResponse,
   GumroadResponse,
+  GumroadSuccessResponse,
   Purchase,
 } from "./types/gumroad";
 
@@ -48,6 +48,53 @@ export interface GumroadError {
   message: string;
 }
 
+export interface ILicenseStore {
+  license: {
+    fileName: string;
+    fileExtension: string;
+    encryptionKey: string | undefined;
+    clearInvalidConfig: boolean;
+    key: string;
+    lastCheckAttempt: number;
+    lastCheckSuccess: number;
+    purchase: Purchase;
+  };
+}
+
+const licenseStoreSchema: Schema<ILicenseStore> = {
+  license: {
+    type: "object",
+    properties: {
+      fileName: {
+        type: "string",
+      },
+      fileExtension: {
+        type: "string",
+      },
+      encryptionKey: {
+        type: "string",
+      },
+      clearInvalidConfig: {
+        type: "boolean",
+      },
+      key: {
+        type: "string",
+      },
+      lastCheckAttempt: {
+        type: "number",
+      },
+      lastCheckSuccess: {
+        type: "number",
+      },
+      purchase: {
+        type: "object",
+        default: {},
+      },
+    },
+    default: {},
+  },
+};
+
 type CheckResult =
   | { status: CheckStatus.ValidLicense; response: GumroadSuccessResponse }
   | { status: CheckStatus.InvalidLicense; error: GumroadError }
@@ -63,11 +110,20 @@ export const createLicenseManager = (
   options?: GumroadLicenseOptions,
 ) => {
   const encryptionKey = productId + machineIdSync();
-  const userStore = new Store({
-    name: "license",
-    fileExtension: "key",
-    encryptionKey: !options?.disableEncryption ? encryptionKey : undefined,
-    clearInvalidConfig: true,
+  const licenseStore = new Store<ILicenseStore>({
+    defaults: {
+      license: {
+        fileName: "license",
+        fileExtension: "key",
+        encryptionKey: !options?.disableEncryption ? encryptionKey : undefined,
+        clearInvalidConfig: true,
+        key: undefined!,
+        lastCheckAttempt: undefined!,
+        lastCheckSuccess: undefined!,
+        purchase: undefined!,
+      },
+    },
+    schema: licenseStoreSchema,
   });
 
   /**
@@ -178,9 +234,9 @@ export const createLicenseManager = (
       return { success: false, error: result.error };
     }
 
-    userStore.set("licenseKey", licenseKey);
-    userStore.set("lastCheckAttempt", Date.now());
-    userStore.set("lastCheckSuccess", Date.now());
+    licenseStore.set("license.key", licenseKey);
+    licenseStore.set("license.lastCheckAttempt", Date.now());
+    licenseStore.set("license.lastCheckSuccess", Date.now());
     return { success: true, response: result.response };
   };
 
@@ -197,26 +253,26 @@ export const createLicenseManager = (
           | CheckStatus.NotSet;
       }
   > => {
-    const key = userStore.get("licenseKey");
+    const key = licenseStore.get("license.key") as string;
 
     if (!key) {
       return { status: CheckStatus.NotSet };
     }
 
-    userStore.set("lastCheckAttempt", Date.now());
+    licenseStore.set("license.lastCheckAttempt", Date.now());
     const result = await validateLicenseCode(key);
 
     switch (result.status) {
       case CheckStatus.ValidLicense:
-        userStore.set("lastCheckSuccess", Date.now());
-        userStore.set("purchase", result.response.purchase);
+        licenseStore.set("license.lastCheckSuccess", Date.now());
+        licenseStore.set("license.purchase", result.response.purchase);
         return {
           status: CheckStatus.ValidLicense,
           purchase: result.response.purchase,
         };
       case CheckStatus.UnableToCheck:
-        const storedPurchase = userStore.get("purchase");
-        const lastCheckSuccess = userStore.get("lastCheckSuccess");
+        const storedPurchase = licenseStore.get("license.purchase") as Purchase;
+        const lastCheckSuccess = licenseStore.get("lastCheckSuccess") as number;
 
         if (
           options?.maxDaysBetweenChecks &&
@@ -234,7 +290,8 @@ export const createLicenseManager = (
             }
           : { status: CheckStatus.InvalidLicense };
       case CheckStatus.InvalidLicense:
-        userStore.delete("purchase");
+        // @ts-ignore
+        licenseStore.delete("license.purchase");
         return { status: CheckStatus.InvalidLicense };
     }
   };
@@ -243,7 +300,7 @@ export const createLicenseManager = (
    * Clears the stored license.
    */
   const clearLicense = () => {
-    userStore.clear();
+    licenseStore.clear();
   };
 
   return { checkCurrentLicense, addLicense, validateLicenseCode, clearLicense };
