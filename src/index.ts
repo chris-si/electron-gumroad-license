@@ -1,6 +1,6 @@
-import axios from "axios";
 import Store, { Schema } from "electron-store";
 import https from "https";
+import fetch from "node-fetch";
 import { machineIdSync } from "node-machine-id";
 
 import {
@@ -145,15 +145,15 @@ export const createLicenseManager = (
     }
 
     try {
-      result = await axios.post(options?.gumroadApiUrl ?? API_URL, {
-        throwHttpErrors: false,
-        timeout: { send: options?.timeout ?? 15000 },
-        form: {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({
           product_id: productId,
           license_key: licenseKey.trim(),
           increment_uses_count: increaseUseCount,
-        },
+        }),
       });
+      result = (await response.json()) as GumroadResponse;
     } catch (e) {
       return {
         status: CheckStatus.UnableToCheck,
