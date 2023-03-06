@@ -35,6 +35,8 @@ export interface GumroadLicenseOptions {
   rejectUnauthorized?: boolean;
   /** License file path */
   licenseFilePath: string;
+  /** License store secret */
+  licenseStoreSecret?: string;
 }
 
 export enum CheckStatus {
@@ -141,6 +143,11 @@ export const createLicenseManager = (
     },
     schema: licenseStoreSchema,
     name: "license",
+    encryptionKey: options.licenseStoreSecret
+      ? createHash("sha256")
+          .update(options.licenseStoreSecret + machineIdSync())
+          .digest("base64")
+      : undefined,
   });
 
   /**
