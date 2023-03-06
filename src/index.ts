@@ -1,6 +1,5 @@
 import axios from "axios";
 import Store, { Schema } from "electron-store";
-import FormData from "form-data";
 import https from "https";
 import { machineIdSync } from "node-machine-id";
 
@@ -146,16 +145,15 @@ export const createLicenseManager = (
     }
 
     try {
-      const form = new FormData();
-      form.append("product_id", productId);
-      form.append("license_key", licenseKey);
-      form.append("increment_uses_count", String(increaseUseCount));
-
-      const resp = await axios.post(options?.gumroadApiUrl ?? API_URL, form, {
-        headers: form.getHeaders(),
-        timeout: options?.timeout ?? 15000,
+      result = await axios.post(options?.gumroadApiUrl ?? API_URL, {
+        throwHttpErrors: false,
+        timeout: { send: options?.timeout ?? 15000 },
+        form: {
+          product_id: productId,
+          license_key: licenseKey.trim(),
+          increment_uses_count: increaseUseCount,
+        },
       });
-      result = resp.data;
     } catch (e) {
       return {
         status: CheckStatus.UnableToCheck,
