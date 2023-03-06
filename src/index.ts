@@ -95,6 +95,8 @@ const licenseStoreSchema: Schema<ILicenseStore> = {
   },
 };
 
+export type LicenseManager = ReturnType<typeof createLicenseManager>;
+
 type CheckResult =
   | { status: CheckStatus.ValidLicense; response: GumroadSuccessResponse }
   | { status: CheckStatus.InvalidLicense; error: GumroadError }
