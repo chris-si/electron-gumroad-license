@@ -126,6 +126,7 @@ export const createLicenseManager = (
       },
     },
     schema: licenseStoreSchema,
+    name: "license",
   });
 
   /**
